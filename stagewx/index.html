@@ -368,6 +368,8 @@ footer { padding:8px 18px; border-top:2px solid var(--b); display:flex; align-it
     <div class="cdc"><div class="cdc-l">🔇 To Curfew</div><div class="cdc-v c-red" id="ctc">--:--</div></div>
     <div class="cdc" id="cdc-slot"><div class="cdc-l">⏱ Slot Remaining</div><div class="cdc-v c-amber" id="ros-slot-rem">--</div></div>
     <div class="cdc" id="cdc-next"><div class="cdc-l">⏭ Next Act In</div><div class="cdc-v c-teal" id="ros-next-in">--</div></div>
+    <div class="cdc"><div class="cdc-l">🌧️ Next Rain</div><div class="cdc-v c-teal" id="cd-rain">--</div></div>
+    <div class="cdc"><div class="cdc-l">⛈️ Next Thunder</div><div class="cdc-v c-amber" id="cd-thunder">--</div></div>
   </div>
 </div>
 
@@ -572,7 +574,7 @@ footer { padding:8px 18px; border-top:2px solid var(--b); display:flex; align-it
 <script>
 // ═══ STATE ═══
 const S={lat:null,lon:null,venue:'',curfew:'23:00',windThr:60,ros:[]};
-S.sunriseT=null;S.sunsetT=null;
+S.sunriseT=null;S.sunsetT=null;S.nextRainT=null;S.nextThunderT=null;
 let pmap=null,pmark=null,editMode=false,dragSrc=null;
 const DEFS={'c-cond':3,'c-clk':1,'c-ros':1,'c-hrly':5,'c-wr':1,'c-prb':2,'c-lt':2,'c-al':3,'c-rdr':5};
 const SPANS={};
@@ -755,6 +757,22 @@ function renderWx(d){
   set('vi',ico);set('vm',desc);
   set('vs',`${wd(c.wind_direction_10m)} ${Math.round(c.wind_speed_10m)} km/h · Gusts ${Math.round(c.wind_gusts_10m)} km/h · RH ${c.relative_humidity_2m}%`);
   if(d.daily?.sunrise?.[0]){S.sunriseT=new Date(d.daily.sunrise[0]);S.sunsetT=new Date(d.daily.sunset[0]);}
+  // Scan hourly forecast for next rain and next thunderstorm
+  const now=new Date();
+  const{time:ht,precipitation_probability:hpp,precipitation:hpr,weather_code:hwc}=d.hourly;
+  S.nextRainT=null;S.nextThunderT=null;
+  // If it's raining RIGHT NOW, next rain = now (already happening)
+  if(c.precipitation>0.1){S.nextRainT=now;}
+  if(isT(c.weather_code)){S.nextThunderT=now;}
+  for(let i=0;i<ht.length;i++){
+    const t=new Date(ht[i]);
+    if(t<=now)continue; // skip past hours
+    // Rain: precip probability ≥40% OR actual precip >0
+    if(!S.nextRainT&&((hpp[i]??0)>=40||(hpr[i]??0)>0.1)){S.nextRainT=t;}
+    // Thunder: WMO thunderstorm code
+    if(!S.nextThunderT&&isT(hwc[i])){S.nextThunderT=t;}
+    if(S.nextRainT&&S.nextThunderT)break;
+  }
   // Alert bars
   const aw=$('ab-w'),at=$('ab-t');
   if(c.wind_gusts_10m>=S.windThr){aw.textContent=`⚠ WIND ALERT — Gusts ${Math.round(c.wind_gusts_10m)} km/h (threshold ${S.windThr} km/h)`;aw.classList.add('on');}else aw.classList.remove('on');
@@ -941,6 +959,43 @@ function tick(){
       $('ctc').className='cdc-v '+(cdiff<1800000?'c-red':cdiff<3600000?'c-amber':'c-teal');
     }
   }
+
+  // Next rain countdown
+  const rainEl=$('cd-rain');
+  if(rainEl){
+    if(S.nextRainT){
+      const diff=S.nextRainT-now;
+      if(diff<=0){
+        rainEl.textContent='Now';
+        rainEl.className='cdc-v c-teal';
+      } else {
+        rainEl.textContent=fd(diff);
+        rainEl.className='cdc-v '+(diff<3600000?'c-amber':'c-teal');
+      }
+    } else {
+      rainEl.textContent='None 24h';
+      rainEl.className='cdc-v c-green';
+    }
+  }
+
+  // Next thunder countdown
+  const thEl=$('cd-thunder');
+  if(thEl){
+    if(S.nextThunderT){
+      const diff=S.nextThunderT-now;
+      if(diff<=0){
+        thEl.textContent='Now ⚡';
+        thEl.className='cdc-v c-red';
+      } else {
+        thEl.textContent=fd(diff);
+        thEl.className='cdc-v '+(diff<3600000?'c-red':'c-amber');
+      }
+    } else {
+      thEl.textContent='None 24h';
+      thEl.className='cdc-v c-green';
+    }
+  }
+
   renderRos();
 }
 
