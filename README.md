@@ -1,3 +1,3 @@
-Quote of the day
-SESsensrad
+Quote of the day  
+SESsensrad  
 Stage WX
